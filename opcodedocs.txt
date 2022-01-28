@@ -1,0 +1,55 @@
+MATH
+
+ADD <num a1> <num a2> <num addr>
+SUB <num a1> <num a2> <num addr>
+MUL <num a1> <num a2> <num addr>
+DIV <num a1> <num a2> <num addr>
+MOD <num a1> <num a2> <num addr>
+RND <num a1> <num a2> <num addr>
+CMATH <num opaddr> <num a1> <num addr>
+
+BOOLEAN
+AND <num a1> <num a2> <num addr>
+OR <num a1> <num a2> <num addr>
+NOT <num a1> <num addr>
+LT <num a1> <num a2> <num addr>
+EQ <num a1> <num a2> <num addr>
+
+CFLOW
+JUMP <num a1>
+TEST <num a1>
+
+DECLARE
+LOADNUM <num const> <num addr>
+LOADSTR <str const> <num addr>
+LOADBOOL <bool const> <num addr>
+LOADTABLE <num size> <num addr>
+MOVE <num addr> <num valaddr>
+
+PEN
+PUP
+PDOWN
+PMOVE <num a1> <num a2>
+PCLR
+PWIDTH <num a1>
+PCLR <num color> <num saturation> <num brightness>
+
+IO
+PRINT <num a1>
+ASK <num a1> <num addr>
+
+INPUT
+IUP <num iaddr> <num addr>
+MX <num addr>
+MY <num addr>
+MDWN <num addr>
+
+FUNC
+FREF <num faddr> <num addr>
+FCALL <num faddr> <num pstart> <num raddr>
+RETURN <num vaddr>
+
+MISC
+RAN <num a1> <num a2> <num addr>
+CLOCK <num addr>
+RCLOCK
