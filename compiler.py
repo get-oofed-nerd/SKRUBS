@@ -4,29 +4,39 @@ def tokenize(code):
     tokens = []
     while True:
         start += 1
-        if start > cLen:
+        if start + 1> cLen:
             break
         else:
             if code[start].lower() in "abcdefghijklmnopqrstuvwxyz_":
-                #namespaces and stuff etc
-                pass
-            elif code[start] == ".":
-                if start + 1 > cLen:
-                    print("ERROR: NO POINTER VALUE SPECIFIED")
-                    return
-                elif code[start + 1] == ".":
-                    tokens.append(["abspointer"])
-                    start += 1
-                else:
-                    tokens.append(["relpointer"])
-            elif code[start] in "1234567890":
-                num = code[start]
-                decimal = False
+                cache = code[start]
                 while True:
                     start += 1
-                    if start > cLen:
+                    if start + 1 > cLen:
                         break
-                    if code[start] in "1234567890": #regular digits
+                    elif code[start].lower() in "qwertyuiopasdfghjklzxcvbnm1234567890_":
+                        cache += code[start]
+                    else:
+                        start -= 1
+                        break
+
+                if cache in ["true" , "false"]:
+                    tokens.append(["boolean", cache])
+                elif cache == "inline":
+                    tokens.append(["inline"])
+                elif cache in ["if", "elseif", "else", "while", "end"]:
+                    tokens.append(["cflow", cache])
+                elif cache in ["and", "or", "not"]:
+                    tokens.append(["binop", cache])
+                else:
+                    tokens.append(["namespace", cache])
+            elif code[start] in "1234567890.":
+                num = code[start]
+                decimal = code[start] == "."
+                while True:
+                    start += 1
+                    if start + 1 > cLen:
+                        break
+                    elif code[start] in "1234567890": #regular digits
                         num += code[start]
                     elif code[start] == ".": #handling decimals
                         if decimal: #numbers can't have two decimal points in them
@@ -39,9 +49,26 @@ def tokenize(code):
                         print("ERROR: MALFORMED NUMBER")
                         return
                     else:
+                        start -= 1
                         break
+
+                tokens.append(["number", num])
                     
                         
-            elif code[start] in "()[]{}+-/*":
+            elif code[start] in "()[]{},":
                 tokens.append(["symbol", code[start]])
-                
+
+            elif code[start] in "+-*/<>":
+                tokens.append(["binop", code[start]])
+
+            elif code[start] in "=":
+                if start + 2 > cLen:
+                    print("ERROR: NO VALUE ASSIGNED")
+                    return
+                elif code[start + 1] == "=":
+                    tokens.append(["binop", "=="])
+                    start += 1
+                else:
+                    tokens.append(["assign"])
+
+    return tokens
