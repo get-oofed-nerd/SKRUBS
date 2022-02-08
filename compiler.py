@@ -6,6 +6,7 @@ class compiler:
     parenDepth = 0
     idxDepth = 0
     tbDepth = 0
+    commaDepth = 0
     
     def tokenize(self, code):
         start = -1
@@ -36,7 +37,7 @@ class compiler:
                         tokens.append(["cflow", cache])
                     elif cache in ["and", "or", "not"]:
                         tokens.append(["operation", cache]) #compiler flags to tell where to get variables
-                    elif cache in ["mousex", "mousey", "moused"]:
+                    elif cache in ["mousex", "mousey", "moused", "clock"]:
                         tokens.append(["flag", cache])
                     else:
                         tokens.append(["variable", cache])
@@ -51,14 +52,12 @@ class compiler:
                             num += code[start]
                         elif code[start] == ".": #handling decimals
                             if decimal: #numbers can't have two decimal points in them
-                                print("ERROR: MALFORMED NUMBER")
-                                return
+                                raise Exception("ERROR: MALFORMED NUMBER")
                             else: #specify that this is indeed a decimal number
                                 num += code[start]
                                 decimal = True
                         elif code[start].lower() in "qwertyuiopasdfghjklzxcvbnm_": #numbers aren't alphabetical
-                            print("ERROR: MALFORMED NUMBER")
-                            return
+                            raise Exception("ERROR: MALFORMED NUMBER")
                         else:
                             start -= 1
                             break
@@ -74,8 +73,7 @@ class compiler:
 
                 elif code[start] in "=":
                     if start + 2 > cLen:
-                        print("ERROR: NO VALUE ASSIGNED")
-                        return
+                        raise Exception("ERROR: NO VALUE ASSIGNED")
                     elif code[start + 1] == "=":
                         tokens.append(["operation", "=="])
                         start += 1
@@ -84,7 +82,8 @@ class compiler:
 
         return tokens
 
-    def parseVal(self, tokens):
+
+    def parseVal(self, tokens): #gets a standalone value within skrubs
         leftOp = None
         while True:
             self.tc += 1
@@ -94,26 +93,41 @@ class compiler:
             
             if tk[0] == "operation" and tk[1] in UrnOps: #urnary operations
                 return [tk[1], self.parseVal(tokens)]
-            elif tk[0] in ["number", "string", "variable", "boolean"] and leftOp == None:
+            elif tk[0] in ["number", "string", "variable", "boolean", "flag"] and leftOp == None:
                 leftOp = tk
             elif tk[0] == "symbol":
                 #yanderedev tier code
                 #deals with parenthesis stuff
                 if tk[1] == "(":
-                    self.parenDepth += 1
-                    return self.expressionEval(tokens)
+                    if leftOp == None:
+                        self.parenDepth += 1
+                        return self.expressionEval(tokens)
+                    elif leftOp[0] == "namespace": #function call
+                        pass
+                        
                 elif tk[1] == "[":
                     #getting an index
                     if leftOp != None:
                         self.idxDepth += 1
                         leftOp = ["idx", leftOp, self.expressionEval(tokens)]
                     else:
-                        print("ERROR: where is ur table lmao")
-                        return
+                        raise Exception("ERROR: where is ur table lmao")
                     
                 elif tk[1] == "{":
                     self.tbDepth += 1
                     #coming soon
+
+                elif tk[1] == ")":
+                    self.tc -= 1
+                    return leftOp
+
+                elif tk[1] == "]":
+                    self.tc -= 1
+                    return leftOp
+                elif tk[1] == "}":
+                    self.tc -= 1
+                    return leftOp
+                        
             else:
                 self.tc -= 1
                 break
@@ -122,8 +136,39 @@ class compiler:
                 
                 
 
-    def expressionEval(self, tokens):
-        print(self.parseVal(tokens))
+    def expressionEval(self, tokens): #equations and stuff ig
+        tree = self.parseVal(tokens)
+        didOperation = False
+        while True:
+            self.tc += 1
+            if self.tc > len(tokens) - 1:
+                break
+            operation = tokens[self.tc]
+            if operation[0] == "operation":
+                if self.tc > len(tokens) - 1:
+                    raise Exception("ERROR: Field two incomplete for operation")
+                else:
+                    t2 = self.parseVal(tokens)
+                    if didOperation: #order of operations enforcement
+                        if OOO[operation[1]] > OOO[tree[0]]: #the current operation comes first
+                            tree = [tree[0], tree[1], [operation[1], tree[2], t2]]
+                        else: #tre operation comes first
+                            tree = [operation[1], tree, t2]
+                    else:
+                        tree = [operation[1], tree, t2]
+                        didOperation = True
+
+            elif operation[0] == "symbol": #parenthesis handler
+                if operation[1] == ")":
+                    if self.parenDepth > 0:
+                        self.parenDepth -= 1
+                        return tree
+                    else:
+                        raise Exception("ERROR: malformed bracket")
+
+        return tree
+
+
         
 
     def compile(self, code):
@@ -135,7 +180,7 @@ class compiler:
             self.parenDepth = 0
             self.idxDepth = 0
             self.tbDepth = 0
-            self.expressionEval(tokens)
+            print(self.expressionEval(tokens))
 
 skrubs = compiler()
-skrubs.compile("sex[1]")
+skrubs.compile("professional[1 + 1]")
