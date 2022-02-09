@@ -101,9 +101,20 @@ class compiler:
                 if tk[1] == "(":
                     if leftOp == None:
                         self.parenDepth += 1
-                        return self.expressionEval(tokens)
-                    elif leftOp[0] == "namespace": #function call
-                        pass
+                        leftOp = self.expressionEval(tokens)
+                    elif leftOp[0] == "variable": #function call
+                        pdc = self.parenDepth
+                        self.parenDepth += 1
+                        args = []
+                        while True:
+                            self.commaDepth += 1
+                            args.append(self.expressionEval(tokens))
+                            if self.parenDepth == pdc:
+                                break
+                        leftOp = ["fcall", leftOp[1], args]
+                    else: #omg we can multiply by sticking brackets together in math no way wowzers!
+                        self.parenDepth += 1
+                        leftOp = ["*", leftOp, self.expressionEval(tokens)]
                         
                 elif tk[1] == "[":
                     #getting an index
@@ -114,19 +125,24 @@ class compiler:
                         raise Exception("ERROR: where is ur table lmao")
                     
                 elif tk[1] == "{":
+                    pdc = self.tbDepth
                     self.tbDepth += 1
-                    #coming soon
+                    args = []
+                    while True:
+                        self.commaDepth += 1
+                        args.append(self.expressionEval(tokens))
+                        if self.tbDepth == pdc:
+                            break
 
-                elif tk[1] == ")":
-                    self.tc -= 1
-                    return leftOp
+                    leftOp = ["table", args]
 
-                elif tk[1] == "]":
-                    self.tc -= 1
-                    return leftOp
-                elif tk[1] == "}":
-                    self.tc -= 1
-                    return leftOp
+                elif tk[1] in ")]},":
+                    if leftOp == None:
+                        raise Exception("ERROR: Please stop trying to force null lmao")
+                    else:
+                        self.tc -= 1
+                        return leftOp
+
                         
             else:
                 self.tc -= 1
@@ -160,11 +176,31 @@ class compiler:
 
             elif operation[0] == "symbol": #parenthesis handler
                 if operation[1] == ")":
-                    if self.parenDepth > 0:
+                    if self.parenDepth >= 0:
                         self.parenDepth -= 1
                         return tree
                     else:
                         raise Exception("ERROR: malformed bracket")
+
+                elif operation[1] == "]":
+                    if self.idxDepth >= 0:
+                        self.idxDepth -= 1
+                        return tree
+                    else:
+                        raise Exception("ERROR: malformed idxBracket")
+                elif operation[1] == "}":
+                    if self.tbDepth >= 0:
+                        self.tbDepth -= 1
+                        return tree
+                    else:
+                        raise Exception("ERROR: malformed tableBracket")
+                    
+                elif operation[1] == ",":
+                    if tree == None or self.commaDepth < 0:
+                        raise Exception("Malformed comma")
+                    else:
+                        self.commaDepth -= 1
+                        return tree
 
         return tree
 
@@ -183,4 +219,4 @@ class compiler:
             print(self.expressionEval(tokens))
 
 skrubs = compiler()
-skrubs.compile("professional[1 + 1]")
+skrubs.compile("{1, {2, 3}}")
