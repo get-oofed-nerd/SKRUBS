@@ -5,8 +5,15 @@ SUB <num a1> <num a2> <num addr>
 MUL <num a1> <num a2> <num addr>
 DIV <num a1> <num a2> <num addr>
 MOD <num a1> <num a2> <num addr>
+URN <num a1> <num addr>
 RND <num a1> <num a2> <num addr>
 CMATH <num opaddr> <num a1> <num addr>
+
+STRING
+
+JOIN <num a1> <num a2> <num addr>
+CHRAT <num a1> <num ia> <num addr>
+STRIN <num a1> <num a2> <num addr>
 
 BOOLEAN
 AND <num a1> <num a2> <num addr>
@@ -20,9 +27,7 @@ JUMP <num a1>
 TEST <num a1>
 
 DECLARE
-LOADNUM <num const> <num addr>
-LOADSTR <str const> <num addr>
-LOADBOOL <bool const> <num addr>
+LOADV <str vtype> <any value> <num addr>
 LOADTABLE <num size> <num addr>
 MOVE <num addr> <num valaddr>
 
@@ -32,7 +37,7 @@ PDOWN
 PMOVE <num a1> <num a2>
 PCLR
 PWIDTH <num a1>
-PCLR <num color> <num saturation> <num brightness>
+PHSV <num color> <num saturation> <num brightness>
 
 IO
 PRINT <num a1>
@@ -51,5 +56,6 @@ RETURN <num vaddr>
 
 MISC
 RAN <num a1> <num a2> <num addr>
+RELTOGGLE <num state>
 CLOCK <num addr>
 RCLOCK
