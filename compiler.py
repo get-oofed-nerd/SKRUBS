@@ -80,6 +80,31 @@ class compiler:
                     else:
                         tokens.append(["assign"])
 
+                elif code[start] in '\'"': #string parse
+                    lookFor = code[start]
+                    isEscape = False
+                    start += 1
+                    string = ""
+                    while True:
+                        if start + 1 > cLen:
+                            raise Exception("ERROR: Malformed String")
+                        else:
+                            char = code[start]
+                            if isEscape:
+                                string += eval('"\\' + char + '"')
+                                isEscape = False
+                            else:
+                                if char == "\\":
+                                    isEscape = True
+                                elif char == lookFor:
+                                    break
+                                else:
+                                    string += char
+
+                        start += 1
+
+                    tokens.append(["string", string])
+
         return tokens
 
 
@@ -201,11 +226,96 @@ class compiler:
                     else:
                         self.commaDepth -= 1
                         return tree
+            else:
+                break
 
         return tree
 
+    def makeCB(self, tokens): #makes the blocks of code
+        tree = []
+        while True:
+            self.tc += 1
+            if self.tc > len(tokens) - 1:
+                break
+            else:
+                tk = tokens[self.tc]
+                if tk[0] == "variable": #variable assigning and function calls
+                    self.tc += 1
+                    if self.tc > len(tokens) - 1:
+                        raise Exception("ERROR: Invalid code block")
+                    else:
+                        nThing = tokens[self.tc]
+                        self.tc -= 2 #conpensating for funny architecture with expressionEval and parseVal
+                        if nThing[0] == "symbol" and nThing[1] == "(": #function calls
+                            tree.append(self.parseVal(tokens))
+                        else: #assigning things
+                            assign = []
+                            
+                            while True: #getting every field we want to assign
+                                item = self.parseVal(tokens)
+                                if item[0] in ["idx", "variable"]:
+                                    assign.append(item)
+                                else:
+                                    raise Exception("ERROR: Can only assign values to table indexes or variables")
 
-        
+                                self.tc += 1
+                                tk = tokens[self.tc]
+                                if tk[0] == "assign":
+                                    break
+                                elif tk[0] == "symbol" and tk[1] == ",":
+                                    pass
+                                else:
+                                    raise Exception("ERROR: Expected comma after field to assign")
+
+
+                            vTable = []
+                            for i in range(len(assign)): #get corresponding values and add it to the value table
+                                if i > 0 and not tokens[self.tc][1] == ",":
+                                    raise Exception("ERROR: Expected comma to separate each value")
+                                
+                                self.commaDepth += 1
+                                vTable.append(self.expressionEval(tokens))
+                                
+                            self.commaDepth -= 1 #commas = #values - 1
+
+                            tree.append(["assign", assign, vTable])
+                            self.tc -= 1
+
+                elif tk[0] == "inline": #inlining code i love assembly and C makeout (real)
+                    #hmmm i wonder how many args this inline will take up
+                    self.tc += 1
+                    if self.tc > len(tokens) - 1:
+                        raise Exception("ERROR: Unspecified inline code")
+                    else:
+                        inline = tokens[self.tc]
+                        if inline[0] == "variable":
+                            args = 0 #argument counter
+                            if inline[1] in ["PUP", "PDOWN", "PCLR", "RCLOCK"]: #takes no arguments
+                                pass
+                            elif inline[1] in ["JUMP", "TEST", "PWIDTH", "PRINT", "MX", "MY", "MDWN", "RETURN", "RELTOGGLE", "CLOCK"]:
+                                args = 1 #takes one argument
+                            elif inline[1] in ["URN", "NOT", "LOADTABLE", "MOVE", "PMOVE", "IUP", "FREF"]:
+                                args = 2 #takes two arguments
+                            elif inline[1] in ["ADD", "SUB", "MUL", "DIV", "MOD", "RND", "CMATH", "JOIN", "CHRAT", "STRIN", "AND", "OR", "LT", "EQ", "LOADV", "PHSV",
+                                               "FCALL", "RAN"]:
+                                args = 3 #takes three arguments
+                            else:
+                                raise Exception("ERROR: Invalid inline code specified")
+
+                            aTable = []
+                            for i in range(args):
+                                self.tc += 1
+                                if self.tc > len(tokens) - 1:
+                                    raise Exception("ERROR: Not enough values specified for inline code")
+                                aTable.append(tokens[self.tc])
+
+                            tree.append(["inline", inline, aTable])
+
+                        else: #do NOT use numbers as inline codes (1984)
+                            raise Exception("ERROR: Malformed inline code")
+
+        return tree
+                                
 
     def compile(self, code):
         tokens = self.tokenize(code)
@@ -216,7 +326,7 @@ class compiler:
             self.parenDepth = 0
             self.idxDepth = 0
             self.tbDepth = 0
-            print(self.expressionEval(tokens))
+            print(self.makeCB(tokens))
 
 skrubs = compiler()
-skrubs.compile("{1, {2, 3}}")
+skrubs.compile("a, b, c = 1, 2, 3")
