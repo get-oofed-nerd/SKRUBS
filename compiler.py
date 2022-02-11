@@ -7,6 +7,8 @@ class compiler:
     idxDepth = 0
     tbDepth = 0
     commaDepth = 0
+    ifDepth = 0
+    scopeDepth = 0
     
     def tokenize(self, code):
         start = -1
@@ -33,7 +35,7 @@ class compiler:
                         tokens.append(["boolean", cache])
                     elif cache == "inline": #inlining will come in handy when making functions for customizability
                         tokens.append(["inline"])
-                    elif cache in ["if", "elseif", "else", "while", "end", "return"]:
+                    elif cache in ["if", "elseif", "else", "while", "end", "return", "function"]:
                         tokens.append(["cflow", cache])
                     elif cache in ["and", "or", "not"]:
                         tokens.append(["operation", cache]) #compiler flags to tell where to get variables
@@ -313,9 +315,65 @@ class compiler:
 
                         else: #do NOT use numbers as inline codes (1984)
                             raise Exception("ERROR: Malformed inline code")
+                elif tk[0] == "cflow":
+                    if tk[1] == "return": #returning a specified value
+                        tree.append(["return", self.expressionEval(tokens)])
+                        return tree
+                    elif tk[1] == "if": #if statements
+                        self.tc += 1
+                        if self.tc > len(tokens) - 1:
+                            raise Exception("ERROR: No condition specified")
+                        else:
+                            self.tc -= 1
+                            condition = self.expressionEval(tokens)
+                            self.tc -= 1
+                            self.scopeDepth += 1
+                            self.ifDepth += 1
+                            cflow = []
+                            cflow.append([condition, self.makeCB(tokens)])
+                            self.ifDepth -= 1
+                            while True:
+                                tk = tokens[self.tc]
+                                self.scopeDepth += 1
+                                if tk[1] == "end": #ends also are final
+                                    self.scopeDepth -= 1
+                                    break
+                                elif tk[1] == "elseif": #elseifs can be chained
+                                    self.ifDepth += 1
+                                    condition = self.expressionEval(tokens)
+                                    self.tc -= 1
+                                    cflow.append([condition, self.makeCB(tokens)])
+                                    self.ifDepth -= 1
+                                elif tk[1] == "else": #elses are the final
+                                    cflow.append(["else", self.makeCB(tokens)])
 
-        return tree
+                            tree.append(["conditional", cflow])
                                 
+                    elif tk[1] == "function":
+                        pass
+                    elif tk[1] == "elseif" or tk[1] == "else":
+                        if self.ifDepth < 0:
+                            raise Exception("ERROR: cflow not found")
+                        else:
+                            self.scopeDepth -= 1
+                            return tree
+                        
+                    elif tk[1] == "while": #i love substructures taking care of all the work for me lol
+                        self.scopeDepth += 1
+                        condition = self.expressionEval(tokens)
+                        self.tc -= 1
+                        tree.append(["loop", condition, self.makeCB(tokens)])
+                    elif tk[1] == "end":
+                        self.scopeDepth -= 1
+                        if self.scopeDepth < 0:
+                            raise Exception("ERROR: Malformed end")
+                        else:
+                            return tree
+
+        if self.scopeDepth > 0:
+            raise Exception("ERROR: Unclosed cflow")
+        
+        return tree                  
 
     def compile(self, code):
         tokens = self.tokenize(code)
@@ -329,4 +387,4 @@ class compiler:
             print(self.makeCB(tokens))
 
 skrubs = compiler()
-skrubs.compile("a, b, c = 1, 2, 3")
+skrubs.compile("")
