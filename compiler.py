@@ -1,4 +1,6 @@
-OOO = {"and": 1, "or": 2, "==": 3, "<": 4, ">": 5, "+": 6, "-": 7, "*": 8, "/": 9}
+OOO = {"and": 1, "or": 2, "==": 3, "<": 4, ">": 5, "+": 6, "-": 7, "*": 8, "/": 9, "%": 10}
+OPERATIONMAP = {"+": "ADD", "-": "SUB", "*": "MUL", "/": "DIV", "%": "MOD", "and": "AND", "or": "OR", "<": "LT", "==": "EQ"}
+FLAGS = {"mousex": "MX", "mousey": "MY", "moused": "MDWN", "clock": "CLOCK"}
 UrnOps = {"not", "-"}
 
 class compiler:
@@ -9,6 +11,8 @@ class compiler:
     commaDepth = 0
     ifDepth = 0
     scopeDepth = 0
+    inFunction = False
+    residentFunctions = {}
     
     def tokenize(self, code):
         start = -1
@@ -35,7 +39,7 @@ class compiler:
                         tokens.append(["boolean", cache])
                     elif cache == "inline": #inlining will come in handy when making functions for customizability
                         tokens.append(["inline"])
-                    elif cache in ["if", "elseif", "else", "while", "end", "return", "function"]:
+                    elif cache in ["if", "elseif", "else", "while", "end", "return", "function", "break"]:
                         tokens.append(["cflow", cache])
                     elif cache in ["and", "or", "not"]:
                         tokens.append(["operation", cache]) #compiler flags to tell where to get variables
@@ -70,7 +74,7 @@ class compiler:
                 elif code[start] in "()[]{},":
                     tokens.append(["symbol", code[start]])
 
-                elif code[start] in "+-*/<>":
+                elif code[start] in "+-*/<>%":
                     tokens.append(["operation", code[start]])
 
                 elif code[start] in "=":
@@ -318,7 +322,9 @@ class compiler:
                 elif tk[0] == "cflow":
                     if tk[1] == "return": #returning a specified value
                         tree.append(["return", self.expressionEval(tokens)])
-                        return tree
+                        self.tc -= 1
+                    elif tk[1] == "break":
+                        tree.append(["break"])
                     elif tk[1] == "if": #if statements
                         self.tc += 1
                         if self.tc > len(tokens) - 1:
@@ -350,7 +356,16 @@ class compiler:
                             tree.append(["conditional", cflow])
                                 
                     elif tk[1] == "function":
-                        pass
+                        if self.inFunction:
+                            raise Exception("ERROR: Cannot nest a function within a function")
+                        else:
+                            func = self.parseVal(tokens)
+                            self.tc -= 1
+                            self.scopeDepth += 1
+                            body = self.makeCB(tokens)
+                            self.inFunction = True
+                            tree.append(["function", func, body])
+                            self.inFunction = False
                     elif tk[1] == "elseif" or tk[1] == "else":
                         if self.ifDepth < 0:
                             raise Exception("ERROR: cflow not found")
@@ -373,7 +388,69 @@ class compiler:
         if self.scopeDepth > 0:
             raise Exception("ERROR: Unclosed cflow")
         
-        return tree                  
+        return tree
+
+    def opcodes(self, tree, inFunction, pstart): #turns an abstract syntax tree into portable bytecode
+        stkReserve = pstart #keeping tabs on how much of the stack is reserved
+        opcodes = []
+        memory = {}
+        
+        for term in tree:
+            if term[0] == "assign":
+                for i in range(len(term[1])):
+                    pstart += 1
+                    memory[term[1][i][0]] = pstart #assigning the variable a memory address
+                    valTo = self.opcodes(term[2], inFunction, pstart)
+                    for op in valTo:
+                        opcodes.append(op)
+
+            elif term[0] in UrnOps: #i love urnary operations!
+                ez = ""
+                if term[0] == "-":
+                    ez = "URN"
+                else:
+                    ez = "NOT"
+
+                t1 = self.opcodes([term[1]], inFunction, pstart + 1)
+                for op in t1:
+                    opcodes.append(op)
+
+                opcodes.append([ez, pstart + 1, pstart])
+
+            elif term[0] in OOO: #compiles a datatype operational statement
+                t1 = self.opcodes([term[1]], inFunction, pstart + 1)
+                for op in t1:
+                    opcodes.append(op)
+                    
+                t2 = self.opcodes([term[2]], inFunction, pstart + 2)
+                for op in t2:
+                    opcodes.append(op)
+
+                if term[0] == ">":
+                    opcodes.append(["LT", pstart + 2, pstart + 1, pstart])
+                else:
+                    opcodes.append([OPERATIONMAP[term[0]], pstart + 1, pstart + 2, pstart])
+
+            elif term[0] == "number": #loading constant :troll:
+                opcodes.append(["LOADV", "number", term[1], pstart])
+
+            elif term[0] == "string":
+                FRMT = ""
+                for char in term[1]:
+                    asc = hex(ord(char))
+                    FRMT += asc[2:len(asc)]
+
+                opcodes.append(["LOADV", "string", FRMT, pstart])
+
+            elif term[0] == "boolean":
+                opcodes.append(["LOADV", "boolean", term[1], pstart])
+
+            elif term[0] == "flag":
+                opcodes.append([FLAGS[term[1]], pstart])
+                
+        return opcodes
+
+        
 
     def compile(self, code):
         tokens = self.tokenize(code)
@@ -384,7 +461,12 @@ class compiler:
             self.parenDepth = 0
             self.idxDepth = 0
             self.tbDepth = 0
-            print(self.makeCB(tokens))
+            self.ifDepth = 0
+            self.scopeDepth = 0
+            self.inFunction = False
+            self.residentFunctions = {}
+            tree = self.makeCB(tokens)
+            print(self.opcodes(tree, False, 0))
 
 skrubs = compiler()
-skrubs.compile("")
+skrubs.compile("ez = clock + mousex")
