@@ -39,7 +39,7 @@ class compiler:
                         tokens.append(["boolean", cache])
                     elif cache == "inline": #inlining will come in handy when making functions for customizability
                         tokens.append(["inline"])
-                    elif cache in ["if", "elseif", "else", "while", "end", "return", "function", "break"]:
+                    elif cache in ["if", "elseif", "else", "while", "end", "return", "function"]:
                         tokens.append(["cflow", cache])
                     elif cache in ["and", "or", "not"]:
                         tokens.append(["operation", cache]) #compiler flags to tell where to get variables
@@ -323,8 +323,6 @@ class compiler:
                     if tk[1] == "return": #returning a specified value
                         tree.append(["return", self.expressionEval(tokens)])
                         self.tc -= 1
-                    elif tk[1] == "break":
-                        tree.append(["break"])
                     elif tk[1] == "if": #if statements
                         self.tc += 1
                         if self.tc > len(tokens) - 1:
@@ -390,49 +388,78 @@ class compiler:
         
         return tree
 
-    def opcodes(self, tree, inFunction, pstart): #turns an abstract syntax tree into portable bytecode
+    def opcodes(self, tree, inFunction, pstart, memory): #turns an abstract syntax tree into portable bytecode
         stkReserve = pstart #keeping tabs on how much of the stack is reserved
         opcodes = []
-        memory = {}
         
         for term in tree:
             if term[0] == "assign":
-                for i in range(len(term[1])):
-                    pstart += 1
-                    memory[term[1][i][0]] = pstart #assigning the variable a memory address
-                    valTo = self.opcodes(term[2], inFunction, pstart)
+                for i in range(len(term[1])): #create a new variable
+                    if not term[1][i][1] in memory:
+                        pstart += 1
+                        memory[term[1][i][1]] = pstart #assigning the variable a memory address
+                        
+                    valTo = self.opcodes(term[2], inFunction, memory[term[1][i][1]], memory) #assign variable certain value
                     for op in valTo:
                         opcodes.append(op)
 
             elif term[0] in UrnOps: #i love urnary operations!
                 ez = ""
+                addr = pstart + 1
                 if term[0] == "-":
                     ez = "URN"
                 else:
                     ez = "NOT"
 
-                t1 = self.opcodes([term[1]], inFunction, pstart + 1)
-                for op in t1:
-                    opcodes.append(op)
+                t1 = self.opcodes([term[1]], inFunction, pstart + 1, memory)
+                if t1[0][0] == "variable":
+                    if t1[0][1] in memory:
+                        addr = memory[t1[0][1]]
+                    else:
+                        raise Exception("ERROR: Undeclared variable")
 
-                opcodes.append([ez, pstart + 1, pstart])
+                else:
+                    for op in t1:
+                        opcodes.append(op)
+
+                opcodes.append([ez, addr, pstart])
 
             elif term[0] in OOO: #compiles a datatype operational statement
-                t1 = self.opcodes([term[1]], inFunction, pstart + 1)
-                for op in t1:
-                    opcodes.append(op)
-                    
-                t2 = self.opcodes([term[2]], inFunction, pstart + 2)
-                for op in t2:
-                    opcodes.append(op)
+                a1 = pstart + 1
+                a2 = pstart + 2
+                
+                t1 = self.opcodes([term[1]], inFunction, pstart + 1, memory)
+                if t1[0][0] == "variable":
+                    if t1[0][1] in memory:
+                        a1 = memory[t1[0][1]]
+                        print(a1)
+                    else:
+                        raise Exception("ERROR: Undeclared variable")
+                else:
+                    for op in t1:
+                        opcodes.append(op)
+
+                t2 = self.opcodes([term[2]], inFunction, pstart + 2, memory)
+                if t2[0][0] == "variable":
+                    if t2[0][1] in memory:
+                        a2 = memory[t2[0][1]]
+                    else:
+                        raise Exception("ERROR: Undeclared variable")
+                else:
+                    for op in t2:
+                        opcodes.append(op)
+
 
                 if term[0] == ">":
-                    opcodes.append(["LT", pstart + 2, pstart + 1, pstart])
+                    opcodes.append(["LT", a2, a1, pstart])
                 else:
-                    opcodes.append([OPERATIONMAP[term[0]], pstart + 1, pstart + 2, pstart])
+                    opcodes.append([OPERATIONMAP[term[0]], a1, a2, pstart])
 
             elif term[0] == "number": #loading constant :troll:
                 opcodes.append(["LOADV", "number", term[1], pstart])
+
+            elif term[0] == "variable": #temporary container so we can point to the according address of the variable
+                opcodes.append(term)
 
             elif term[0] == "string":
                 FRMT = ""
@@ -447,6 +474,38 @@ class compiler:
 
             elif term[0] == "flag":
                 opcodes.append([FLAGS[term[1]], pstart])
+
+            elif term[0] == "conditional": #i love conditionals!
+                BROJUMPPLEASE = [] #we need to find every exit conditional in order or the cflow to compile properly lol
+                pstart += 1
+                for flow in term[1]:
+                    if flow[0] == "else":
+                        for c in self.opcodes(flow[1], inFunction, pstart, memory):
+                            opcodes.append(c)
+
+                    else:
+                        
+                        #add a test opcode to see if the condition is true or not
+                        for i in self.opcodes([flow[0]], inFunction, pstart, memory):
+                            opcodes.append(i)
+
+                        opcodes.append(["TEST", pstart])
+                        body = self.opcodes(flow[1], inFunction, pstart, memory)
+                        opcodes.append(["JUMP", len(body) + 1])
+                        for c in body:
+                            opcodes.append(c)
+
+                        opcodes.append(["JUMP", 42069]) #we will come back to this opcode later
+                        BROJUMPPLEASE.append(len(opcodes) - 1)
+
+                pstart -= 1
+
+                    
+
+                for idx in BROJUMPPLEASE: #making the exits for each conditional functional
+                    opcodes[idx][1] = len(opcodes) - idx - 1
+
+
                 
         return opcodes
 
@@ -466,7 +525,7 @@ class compiler:
             self.inFunction = False
             self.residentFunctions = {}
             tree = self.makeCB(tokens)
-            print(self.opcodes(tree, False, 0))
+            print(self.opcodes(tree, False, 0, {}))
 
 skrubs = compiler()
-skrubs.compile("ez = clock + mousex")
+skrubs.compile("ez = 1 + 1 ez = ez + 1")
