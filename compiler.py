@@ -388,7 +388,7 @@ class compiler:
         
         return tree
 
-    def opcodes(self, tree, inFunction, pstart, memory): #turns an abstract syntax tree into portable bytecode
+    def opcodes(self, tree, inFunction, pstart, memory, _return=False): #turns an abstract syntax tree into portable bytecode
         stkReserve = pstart #keeping tabs on how much of the stack is reserved
         opcodes = []
         
@@ -399,7 +399,7 @@ class compiler:
                         pstart += 1
                         memory[term[1][i][1]] = pstart #assigning the variable a memory address
                         
-                    valTo = self.opcodes(term[2], inFunction, memory[term[1][i][1]], memory) #assign variable certain value
+                    valTo = self.opcodes(term[2], inFunction, pstart, memory) #assign variable certain value
                     for op in valTo:
                         opcodes.append(op)
 
@@ -432,7 +432,6 @@ class compiler:
                 if t1[0][0] == "variable":
                     if t1[0][1] in memory:
                         a1 = memory[t1[0][1]]
-                        print(a1)
                     else:
                         raise Exception("ERROR: Undeclared variable")
                 else:
@@ -505,11 +504,84 @@ class compiler:
                 for idx in BROJUMPPLEASE: #making the exits for each conditional functional
                     opcodes[idx][1] = len(opcodes) - idx - 1
 
+            elif term[0] == "inline":
+                code = [term[1][1]]
+                for i in term[2]:
+                    code.append(i[1])
 
-                
+                opcodes.append(code)
+
+            elif term[0] == "loop":
+                loc = len(opcodes)
+                cond = self.opcodes([term[1]], inFunction, pstart + 1, memory)
+                for code in cond:
+                    opcodes.append(code)
+
+                opcodes.append(["TEST", pstart + 1])
+                body = self.opcodes(term[2], inFunction, pstart + 1, memory)
+                opcodes.append(["JUMP", len(body) + 1])
+
+                for code in body:
+                    opcodes.append(code)
+
+                opcodes.append(["JUMP", loc - len(opcodes) - len(cond) - 1])
+
+            elif term[0] == "function":
+                self.residentFunctions[term[1][1]] = [len(term[1][2]), len(opcodes) + 1] #put the amount of parameters and the area where the function will
+                #be resident
+                ez = self.opcodes(term[2], True, 0, {}, True)
+                opcodes.append(["JUMP", len(ez)]) #do NOT run functions unless otherwise specified (1984)
+                for i in ez:
+                    opcodes.append(i)
+
+            elif term[0] == "fcall":
+                if term[1] in self.residentFunctions:
+                    noZeroAddr = False #NO assigning values to the memory address 0 (1984)
+                    if pstart == 0:
+                        pstart = 1
+                        noZeroAddr = 1
+                        
+                    for i in range(self.residentFunctions[term[1]][0]):
+                        ez = self.opcodes([term[2][i]], inFunction, pstart + i, memory)
+                        if ez[0][0] == "variable":
+                            opcodes.append(["MOVE", pstart + i, memory[ez[0][1]]])
+                        else:
+                            for code in ez:
+                                opcodes.append(code)
+                        
+                    opcodes.append(["FCALL", self.residentFunctions[term[1]][1], pstart, pstart])
+
+                    if noZeroAddr: #setting it back once we are done doing the funny workaround
+                        pstart = 0
+                else:
+                    raise Exception("ERROR: Undefined function")
+
+            elif term[0] == "return":
+                r = self.opcodes([term[1]], inFunction, pstart + 1, memory)
+                if r[0][0] == "variable":
+                    opcodes.append(["RETURN", memory[r[0][1]]])
+                else:
+                    for i in r:
+                        opcodes.append(i)
+                    opcodes.append(["RETURN", pstart + 1])
+
+
+        if _return:
+            opcodes.append(["RETURN", 0])
+            
         return opcodes
 
-        
+    def serialize(self, opcodes): #serializes all opcodes in string format in order for skrubs to execute
+        serial = ""
+        for i in opcodes:
+            serial += ","
+            for j in range(len(i)):
+                if j > 0:
+                    serial += "."
+
+                serial += str(i[j])
+
+        return serial
 
     def compile(self, code):
         tokens = self.tokenize(code)
@@ -525,7 +597,8 @@ class compiler:
             self.inFunction = False
             self.residentFunctions = {}
             tree = self.makeCB(tokens)
-            print(self.opcodes(tree, False, 0, {}))
+            codes = self.opcodes(tree, False, 0, {})
+            print(self.serialize(codes))
 
 skrubs = compiler()
-skrubs.compile("ez = 1 + 1 ez = ez + 1")
+skrubs.compile("function print(a) inline PRINT 1 return 1 end haida = print('Hello world!') print(haida + 1)")
