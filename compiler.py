@@ -300,10 +300,10 @@ class compiler:
                                 pass
                             elif inline[1] in ["JUMP", "TEST", "PWIDTH", "PRINT", "MX", "MY", "MDWN", "RETURN", "RELTOGGLE", "CLOCK"]:
                                 args = 1 #takes one argument
-                            elif inline[1] in ["URN", "NOT", "LOADTABLE", "MOVE", "PMOVE", "IUP", "FREF"]:
+                            elif inline[1] in ["URN", "NOT", "MOVE", "PMOVE", "IUP", "FREF"]:
                                 args = 2 #takes two arguments
                             elif inline[1] in ["ADD", "SUB", "MUL", "DIV", "MOD", "RND", "CMATH", "JOIN", "CHRAT", "STRIN", "AND", "OR", "LT", "EQ", "LOADV", "PHSV",
-                                               "FCALL", "RAN"]:
+                                               "FCALL", "RAN", "LOADTABLE", "IDX", "GIDX"]:
                                 args = 3 #takes three arguments
                             else:
                                 raise Exception("ERROR: Invalid inline code specified")
@@ -391,17 +391,55 @@ class compiler:
     def opcodes(self, tree, inFunction, pstart, memory, _return=False): #turns an abstract syntax tree into portable bytecode
         stkReserve = pstart #keeping tabs on how much of the stack is reserved
         opcodes = []
+        tables = 0
         
         for term in tree:
             if term[0] == "assign":
                 for i in range(len(term[1])): #create a new variable
-                    if not term[1][i][1] in memory:
-                        pstart += 1
-                        memory[term[1][i][1]] = pstart #assigning the variable a memory address
-                        
-                    valTo = self.opcodes(term[2], inFunction, pstart, memory) #assign variable certain value
-                    for op in valTo:
-                        opcodes.append(op)
+                    if term[1][i][0] == "variable":
+                        if not term[1][i][1] in memory:
+                            pstart += 1
+                            memory[term[1][i][1]] = pstart #assigning the variable a memory address
+                            
+                        valTo = self.opcodes(term[2], inFunction, pstart, memory) #assign variable certain value
+                        if valTo[0][0] == "variable":
+                            opcodes.append(["MOVE", pstart, memory[valTo[0][1]]])
+                        else:
+                            for op in valTo:
+                                opcodes.append(op)
+
+                    elif term[1][i][0] == "idx": #how to set a table 101 lol
+                        thing = term[1][i]
+                        ADDR = 0
+                        if thing[1][0] == "variable": #finding table we want to set
+                            ADDR = memory[thing[1][1]]
+                        else:
+                            tb = self.opcodes([thing[1]], inFunction, pstart + 1, memory)
+                            for i in tb:
+                                opcodes.append(tb)
+                            ADDR = pstart + 1
+
+                        iADDR = ADDR + 1
+
+                        idx = self.opcodes([thing[2]], inFunction, iADDR, memory) #find the index to set
+                        if idx[0][0] == "variable":
+                            iADDR = memory[idx[0][1]]
+                        else:
+                            for op in idx:
+                                opcodes.append(op)
+
+                        vADDR = ADDR + 2 #find the value to set at the index
+                        valTo = self.opcodes(term[2], inFunction, vADDR, memory) 
+                        if valTo[0][0] == "variable":
+                            vADDR = memory[valTo[0][1]]
+                        else:
+                            for op in valTo:
+                                opcodes.append(op)
+
+                        opcodes.append(["IDX", ADDR, iADDR, vADDR])
+
+                                
+
 
             elif term[0] in UrnOps: #i love urnary operations!
                 ez = ""
@@ -565,6 +603,40 @@ class compiler:
                         opcodes.append(i)
                     opcodes.append(["RETURN", pstart + 1])
 
+            elif term[0] == "table":
+                tables += 1
+                opcodes.append(["LOADTABLE", len(term[1]), pstart, tables])
+                for i in range(len(term[1])):
+                    val = self.opcodes([term[1][i]], inFunction, pstart + 1, memory)
+                    opcodes.append(["LOADV", "number", i + 1, pstart + 2])
+                    if val[0][0] == "variable":
+                        opcodes.append(["IDX", pstart, pstart + 2, memory[val[0][1]]])
+                    else:
+                        for j in val:
+                            opcodes.append(j)
+
+                        opcodes.append(["IDX", pstart, pstart + 2, pstart + 1])
+
+            elif term[0] == "idx":
+                ADDR = None
+                if term[1][0] == "variable":
+                    ADDR = memory[term[1][1]]
+                elif term[1][0] == "idx":
+                    tb = self.opcodes([term[1]], inFunction, pstart + 1, memory)
+                    for i in tb:
+                        opcodes.append(tb)
+                    ADDR = pstart + 1
+
+                idx = self.opcodes([term[2]], inFunction, pstart + 1, memory)
+                if idx[0][0] == "variable":
+                    opcodes.append(["GIDX", ADDR, pstart + 1, memory[idx[0][1]]])
+                else:
+                    for i in idx:
+                        opcodes.append(i)
+
+                    opcodes.append(["GIDX", ADDR, pstart + 1, pstart])
+
+
 
         if _return:
             opcodes.append(["RETURN", 0])
@@ -601,4 +673,4 @@ class compiler:
             print(self.serialize(codes))
 
 skrubs = compiler()
-skrubs.compile("function print(a) inline PRINT 1 return 1 end haida = print('Hello world!') print(haida + 1)")
+skrubs.compile("ez = {1, {1, 2}} ez[1][ez[1][ez[1][1]]] = 69")
